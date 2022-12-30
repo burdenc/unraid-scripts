@@ -1,0 +1,38 @@
+#!/bin/bash
+#description=Auto restarts VPN container if network connection is lost
+#foregroundOnly=false
+#backgroundOnly=false
+#arrayStarted=true
+#name=checkVpnHealth
+
+VPN_CONTAINER="binhex-delugevpn"
+CONTAINERS_TO_RESTART="${VPN_CONTAINER} speedtest-tracker-vpn"
+
+SLEEP_TIME="30s"
+RETRIES=5
+
+echo "Checking health of ${VPN_CONTAINER}"
+for i in $(seq 1 "${RETRIES}"); do
+  echo
+  echo "Attempt ${i} of ${RETRIES}..."
+
+  echo
+  echo "-------------------------------"
+  docker exec "${VPN_CONTAINER}" ping -c 1 google.com
+  RESULT=$?
+  echo "-------------------------------"
+  echo
+
+  if [[ ${RESULT} -eq 0 ]]; then
+    echo "SUCCESS"
+    exit 0
+  fi
+
+  echo "FAILURE. Waiting ${SLEEP_TIME} then retrying."
+  sleep "${SLEEP_TIME}"
+done
+
+echo "${VPN_CONTAINER} is unhealthy."
+echo "Restarting following docker containers: ${CONTAINERS_TO_RESTART}"
+
+docker restart ${CONTAINERS_TO_RESTART}

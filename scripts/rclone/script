@@ -1,0 +1,82 @@
+#!/bin/bash
+#description=Automatically runs rclone to backup data
+#foregroundOnly=false
+#backgroundOnly=false
+#arrayStarted=true
+#name=rclone
+
+# HELPERS
+function trim_log() {
+	LOG_FILE="$1"
+	TRIMMED_LOG="$(mktemp)"
+	tail -n "${MAX_LOG_LINES}" "${LOG_FILE}" > "${TRIMMED_LOG}"
+	mv "${TRIMMED_LOG}" "${LOG_FILE}"
+}
+
+function run_and_print() {
+	echo " $ $@"
+	echo
+	$@
+}
+
+DIV="+~+~+~+~+~+~+~+~+~+~+~+~+~+~+~+~+~+~+~+~+~+~+~+~+~+~+~+~+~+~+~+~+~+~+~+~+~+~+~+~+"
+
+# LOG PARAMS
+MAX_LOG_LINES=10000
+
+# RCLONE PARAMS
+REMOTE="EmulationSaves"
+REMOTE_PATH=""
+
+# RSNAPSHOT PARAMS
+MAX_BACKUPS=20
+
+# PATHS
+BASE_PATH="/mnt/user/backup/rclone"
+DEST_PATH="${BASE_PATH}/${REMOTE}"
+LATEST_PATH="${DEST_PATH}/latest"
+BACKUP_PATH="${DEST_PATH}/backup"
+RCLONE_LOG_PATH="${DEST_PATH}/.rclone.log"
+RSNAP_LOG_PATH="${DEST_PATH}/.rsnapshot.log"
+RSNAP_CONFIG="${DEST_PATH}/.rsnapshot.conf"
+
+echo "${DIV}"
+echo "Running rclone"
+echo "Logging to ${RCLONE_LOG_PATH}"
+run_and_print rclone -v copy ${REMOTE}:${REMOTE_PATH} ${LATEST_PATH} --log-file=${RCLONE_LOG_PATH}
+echo "${DIV}"
+echo
+
+# The value "snap" is arbtrary, it just determines the name of the folders.
+RSNAP_RETAIN="snap"
+RSNAP_CMD="rsnapshot -c ${RSNAP_CONFIG}"
+
+# The /./ prevents rsnapshot from writing the full path into the snapshot dir.
+# Instead it just writes the relative path instead.
+echo -e "\
+config_version\t1.2
+snapshot_root\t${BACKUP_PATH}
+
+cmd_rsync\t/usr/bin/rsync
+
+verbose\t3
+logfile\t${RSNAP_LOG_PATH}
+
+retain\t${RSNAP_RETAIN}\t${MAX_BACKUPS}
+
+backup\t${LATEST_PATH}/./\t./
+" > ${RSNAP_CONFIG}
+
+echo "${DIV}"
+echo "Running rsnapshot"
+echo "Logging to ${RSNAP_LOG_PATH}"
+run_and_print ${RSNAP_CMD} ${RSNAP_RETAIN}
+echo
+${RSNAP_CMD} diff "${RSNAP_RETAIN}.0" "${RSNAP_RETAIN}.1" | tee -a "${RSNAP_LOG_PATH}"
+echo
+${RSNAP_CMD} du | tee -a "${RSNAP_LOG_PATH}"
+echo "${DIV}"
+
+trim_log "${RCLONE_LOG_PATH}"
+trim_log "${RSNAP_LOG_PATH}"
+
